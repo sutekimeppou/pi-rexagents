@@ -1,0 +1,29 @@
+{
+  "name": "pi-rexagents",
+  "version": "0.1.0",
+  "description": "Interactive Pi subagents in minimized Rex panes.",
+  "private": true,
+  "type": "module",
+  "keywords": ["pi-package"],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/sutekimeppou/pi-rexagents.git"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.4.0",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
