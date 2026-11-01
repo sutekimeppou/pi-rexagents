@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "keywords": ["pi-package"],
+  "files": ["src", "README.md"],
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/sutekimeppou/pi-rexagents.git"
@@ -16,7 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./src/index.ts"]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=1.4.0",
