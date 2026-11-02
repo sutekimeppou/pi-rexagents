@@ -1,7 +1,7 @@
 import {
   getAgentDir, type ExtensionAPI, type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { bool, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema";
 import { discoverAgents, loadAgent } from "./agents.ts";
 import { CompletionOutbox, type Completion } from "./completion.ts";
 import { Controller, type Worker } from "./controller.ts";
@@ -10,7 +10,27 @@ import {
   type ParentEntry, type WorkerResult,
 } from "./state.ts";
 
-const Thinking = Type.Union(["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((value) => Type.Literal(value)));
+const SpawnParameters = obj({
+  prompt: str({ minLength: 1, description: "Self-contained assignment, including scope and required checks" }),
+  description: str({ minLength: 1, description: "Short task label" }),
+  subagent_type: opt(str({ description: "Agent definition name; required for a new worker" })),
+  name: opt(str({ description: "Unique memorable worker name" })),
+  model: opt(str({ description: "Model ID, provider/modelId, or unambiguous name match" })),
+  thinking: opt(oneOf(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
+  cwd: opt(str({ description: "Worker checkout directory; defaults to the parent's cwd" })),
+  context: opt(oneOf(["fresh", "fork"], {
+    default: "fresh",
+    description: "New workers only: fresh starts with the assignment; fork copies the parent's active conversation branch at spawn time.",
+  })),
+  resume: opt(str({ description: "ID or name of an idle or closed worker to continue" })),
+  run_in_background: opt(bool({ default: true, description: "False waits for the result. Cancelling a wait leaves the worker running." })),
+});
+const ResultParameters = obj({
+  agent_id: str(),
+  wait: opt(bool({ default: false })),
+});
+const StopParameters = obj({ agent_id: str() });
+const SteerParameters = obj({ agent_id: str(), message: str({ minLength: 1 }) });
 
 function response(text: string, details: unknown) {
   return { content: [{ type: "text" as const, text }], details };
@@ -137,22 +157,8 @@ export default function rexSubagents(pi: ExtensionAPI): void {
     name: "spawn_subagent",
     label: "Rex worker",
     description: `Delegate a self-contained assignment to an interactive Pi worker in a minimized Rex pane. Workers run in the background and notify you on completion. The user can open a pane and chat or steer naturally. Use only when the user requests or agrees to delegation. Available agents: ${available || "none"}. Shared checkout by default; assignments must define scope and preserve other changes. Workers keep running when the parent turn is cancelled. Do not poll or invent pending results.`,
-    parameters: Type.Object({
-      prompt: Type.String({ minLength: 1, description: "Self-contained assignment, including scope and required checks" }),
-      description: Type.String({ minLength: 1, description: "Short task label" }),
-      subagent_type: Type.Optional(Type.String({ description: "Agent definition name; required for a new worker" })),
-      name: Type.Optional(Type.String({ description: "Unique memorable worker name" })),
-      model: Type.Optional(Type.String({ description: "Model ID, provider/modelId, or unambiguous name match" })),
-      thinking: Type.Optional(Thinking),
-      cwd: Type.Optional(Type.String({ description: "Worker checkout directory; defaults to the parent's cwd" })),
-      context: Type.Optional(Type.Union([Type.Literal("fresh"), Type.Literal("fork")], {
-        default: "fresh",
-        description: "New workers only: fresh starts with the assignment; fork copies the parent's active conversation branch at spawn time.",
-      })),
-      resume: Type.Optional(Type.String({ description: "ID or name of an idle or closed worker to continue" })),
-      run_in_background: Type.Optional(Type.Boolean({ default: true, description: "False waits for the result. Cancelling a wait leaves the worker running." })),
-    }),
-    async execute(_callId, params, signal, _update, ctx) {
+    parameters: SpawnParameters,
+    async execute(_callId, params: Static<typeof SpawnParameters>, signal, _update, ctx) {
       const manager = current();
       let worker: Worker;
       if (params.resume) {
@@ -200,11 +206,8 @@ export default function rexSubagents(pi: ExtensionAPI): void {
     name: "get_subagent_result",
     label: "Worker result",
     description: "Retrieve a worker's latest result or wait for its current run. Use the ID or name returned by spawn_subagent. Cancelling a wait leaves the worker running.",
-    parameters: Type.Object({
-      agent_id: Type.String(),
-      wait: Type.Optional(Type.Boolean({ default: false })),
-    }),
-    async execute(_callId, params, signal) {
+    parameters: ResultParameters,
+    async execute(_callId, params: Static<typeof ResultParameters>, signal) {
       const manager = current();
       const worker = manager.find(params.agent_id);
       const result = params.wait ? await manager.wait(worker, signal) : manager.result(worker);
@@ -221,8 +224,8 @@ export default function rexSubagents(pi: ExtensionAPI): void {
     name: "stop_subagent",
     label: "Stop worker",
     description: "Interrupt a worker's current Pi turn, like pressing Escape. Keeps its Pi process and Rex pane interactive so the user can continue chatting naturally. Suppresses the interrupted run's completion notification. Use the worker's ID or name.",
-    parameters: Type.Object({ agent_id: Type.String() }),
-    async execute(_callId, params) {
+    parameters: StopParameters,
+    async execute(_callId, params: Static<typeof StopParameters>) {
       const manager = current();
       const worker = manager.find(params.agent_id);
       await manager.stop(worker);
@@ -234,8 +237,8 @@ export default function rexSubagents(pi: ExtensionAPI): void {
     name: "steer_subagent",
     label: "Steer worker",
     description: "Send directions to a connected worker through Pi's native steering queue, preserving any draft in its editor. Acknowledgement means accepted; wait for the eventual result.",
-    parameters: Type.Object({ agent_id: Type.String(), message: Type.String({ minLength: 1 }) }),
-    async execute(_callId, params) {
+    parameters: SteerParameters,
+    async execute(_callId, params: Static<typeof SteerParameters>) {
       const worker = current().find(params.agent_id);
       await current().steer(worker, params.message);
       return response(`Directions accepted by ${worker.manifest.name}.`, { worker: worker.reference });
