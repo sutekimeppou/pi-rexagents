@@ -1,4 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { delimiter } from "node:path";
 import { promisify } from "node:util";
 import type { Manifest, Pane } from "./state.ts";
 
@@ -73,7 +74,8 @@ export class Rex {
         flavor: "com.superlogical.terminal.shell",
         label: this.label(manifest),
         options: {
-          shell: "none", command, cwd: manifest.cwd,
+          command, cwd: manifest.cwd,
+          path_prepend: process.env.PATH?.split(delimiter),
           size: { columns: 120, rows: 36 },
           exit: { on_completion: false },
         },

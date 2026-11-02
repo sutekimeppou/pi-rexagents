@@ -45,6 +45,8 @@ Workers run in the background. Set `run_in_background: false` to wait for a resu
 
 Workers share the assigned checkout. Give them clear scopes and file ownership.
 
+Workers start through your default login shell and receive the parent Pi process's PATH. This loads your shell's login profile and makes tools from the parent's interactive shell setup available to workers.
+
 ## Panes
 
 Run `/agents` to open, minimize, stop, or close a worker. You can also address one directly:
