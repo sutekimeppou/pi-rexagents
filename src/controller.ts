@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
-  acquireLock, active, isAlive, loadManifest, MAX_OPEN_WORKERS, piInvocation,
+  acquireLock, active, isAlive, loadManifest, piInvocation,
   readJson, resultPath, stateRoot, writeJson, writePrivate,
   type AgentDefinition, type ForkContext, type Manifest, type Pane, type WorkerReference, type WorkerResult, type WorkerState,
 } from "./state.ts";
@@ -46,7 +46,6 @@ export class Controller {
     private location: Manifest["rex"] | undefined,
     private onWorker: (reference: WorkerReference) => void,
     private onChange: (worker: Worker) => void,
-    private maxOpen = MAX_OPEN_WORKERS,
   ) {}
 
   attach(references: WorkerReference[]): void {
@@ -190,7 +189,6 @@ export class Controller {
       if (options.name && [...this.workers.values()].some((worker) => worker.manifest.name === options.name)) {
         throw new Error(`Worker name "${options.name}" is already in use`);
       }
-      this.capacity();
       await new Rex(this.location).check();
       this.assertLive();
       const id = randomUUID();
@@ -225,11 +223,6 @@ export class Controller {
       await this.launch(worker);
       return worker;
     });
-  }
-
-  private capacity(): void {
-    const open = [...this.workers.values()].filter((worker) => worker.connection !== "closed").length;
-    if (open >= this.maxOpen) throw new Error(`There are already ${this.maxOpen} open workers. Close one through /agents first.`);
   }
 
   private command(manifest: Manifest): string[] {
@@ -300,7 +293,6 @@ export class Controller {
       }
       if (worker.connection !== "closed") throw new Error("Worker is reconnecting. Open its pane to inspect it before resuming.");
       if (!statSync(worker.manifest.cwd).isDirectory()) throw new Error(`Worker cwd is not a directory: ${worker.manifest.cwd}`);
-      this.capacity();
       const owner = readJson<{ pid: number }>(join(worker.reference.directory, "owner.json"));
       if (owner && isAlive(owner.pid)) throw new Error("The worker's previous Pi process is still exiting. Wait before resuming it.");
       // Remove only this worker's exited terminal before reusing its stable label.
@@ -327,40 +319,8 @@ export class Controller {
   }
 
   async steer(worker: Worker, message: string): Promise<void> {
-    if (worker.connection !== "connected" || !worker.client) throw new Error("Worker is not connected. Open /agents to inspect or resume it.");
+    if (worker.connection !== "connected" || !worker.client) throw new Error("Worker is not connected. Inspect its pane in Rex or use spawn_subagent with resume.");
     await worker.client.call("steer", message);
-  }
-
-  async stop(worker: Worker): Promise<void> {
-    if (!worker.client) throw new Error("Worker is not connected");
-    await worker.client.call("abort");
-  }
-
-  async close(worker: Worker): Promise<void> {
-    const rex = new Rex(worker.manifest.rex);
-    if (worker.client) {
-      await worker.client.call("shutdown").catch(() => {});
-      for (let i = 0; worker.pane && i < 30 && await rex.running(worker.pane.block); i++) await delay(100);
-    }
-    if (worker.pane) {
-      try {
-        await rex.call("block.close", { block_id: worker.pane.block });
-      } catch (error) {
-        if (!/not_found|session_not_found/.test(String(error))) throw error;
-      }
-    }
-    worker.client?.close();
-    worker.client = undefined;
-    if (worker.retry) clearTimeout(worker.retry);
-    worker.retry = undefined;
-    worker.connection = "closed";
-    this.changed(worker);
-  }
-
-  async present(worker: Worker, minimized: boolean): Promise<void> {
-    if (worker.connection === "closed" && !minimized && worker.state?.sessionFile) await this.resume(worker);
-    if (!worker.pane) throw new Error("Worker pane is unavailable");
-    await new Rex(worker.manifest.rex).present(worker.pane, minimized);
   }
 
   result(worker: Worker, revision = worker.state?.resultRevision): WorkerResult | undefined {

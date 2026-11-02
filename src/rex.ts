@@ -91,7 +91,7 @@ export class Rex {
   async recover(manifest: Manifest): Promise<Pane | undefined> {
     const { blocks } = await this.call<{ blocks: Block[] }>("session.list_blocks");
     const matches = blocks.filter((block) => block.label === this.label(manifest));
-    if (matches.length > 1) throw new Error(`Multiple Rex panes match worker ${manifest.id}; inspect /agents before retrying`);
+    if (matches.length > 1) throw new Error(`Multiple Rex panes match worker ${manifest.id}; inspect them in Rex before retrying`);
     return matches[0] ? { instance: manifest.instance, block: matches[0].block_id } : undefined;
   }
 

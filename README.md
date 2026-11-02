@@ -49,28 +49,9 @@ Workers start through your default login shell and receive the parent Pi process
 
 ## Panes
 
-Run `/agents` to open, minimize, stop, or close a worker. You can also address one directly:
-
-```text
-/agents open review
-/agents minimize review
-/agents stop review
-/agents close review
-```
-
-Stop interrupts the current run. Close ends the process and removes the pane, keeping its transcript. Open restores a closed worker's conversation.
+Open, minimize, or close worker panes directly in Rex. Closing a pane ends its process and keeps its transcript. Ask Pi to resume a closed worker by name or ID to restore its conversation.
 
 Inside a worker, use Enter to steer, Alt+Enter to queue follow-up work, and Escape to interrupt. Follow-up results also return to the parent.
-
-## Configuration
-
-The default limit is 10 open workers, including idle ones. Change it in `~/.pi/agent/rex-subagents.json`:
-
-```json
-{ "maxOpenWorkers": 10 }
-```
-
-Transcripts and worker state live under `$XDG_STATE_HOME/pi/rex-subagents/`, defaulting to `~/.local/state/pi/rex-subagents/`.
 
 ## Development
 

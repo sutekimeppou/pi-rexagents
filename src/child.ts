@@ -109,11 +109,6 @@ export default function childBridge(pi: ExtensionAPI): void {
             publish();
           }
           pi.sendUserMessage(input.message!, { deliverAs: "steer" });
-        } else if (input.method === "abort") {
-          ctx.abort();
-        } else if (input.method === "shutdown") {
-          // Let the reply reach the socket before orderly exit tears it down.
-          setImmediate(() => { ctx.abort(); ctx.shutdown(); });
         }
         return { accepted: true, run: state.run };
       });

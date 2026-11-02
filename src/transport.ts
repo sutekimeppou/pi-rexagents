@@ -6,7 +6,7 @@ const MAX_FRAME = 256 * 1024;
 
 export interface Request {
   id: string;
-  method: "subscribe" | "steer" | "abort" | "shutdown";
+  method: "subscribe" | "steer";
   message?: string;
 }
 
@@ -44,7 +44,7 @@ function frames(socket: Socket, receive: (value: unknown) => void): void {
 function request(value: unknown): Request {
   if (!value || typeof value !== "object") throw new Error("Invalid request");
   const input = value as Request;
-  if (typeof input.id !== "string" || !["subscribe", "steer", "abort", "shutdown"].includes(input.method)) {
+  if (typeof input.id !== "string" || !["subscribe", "steer"].includes(input.method)) {
     throw new Error("Invalid worker request");
   }
   if (input.method === "steer" && (typeof input.message !== "string" || !input.message.trim())) {

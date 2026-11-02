@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import {
   getAgentDir, type ExtensionAPI, type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
@@ -7,7 +6,7 @@ import { discoverAgents, loadAgent } from "./agents.ts";
 import { CompletionOutbox, type Completion } from "./completion.ts";
 import { Controller, type Worker } from "./controller.ts";
 import {
-  ENTRY, MAX_OPEN_WORKERS, PREVIEW_LENGTH, active, readJson, reconstruct, resultPath,
+  ENTRY, PREVIEW_LENGTH, active, reconstruct, resultPath,
   type ParentEntry, type WorkerResult,
 } from "./state.ts";
 
@@ -68,9 +67,6 @@ export default function rexSubagents(pi: ExtensionAPI): void {
         details: { workers: items.map(({ id, revision }) => ({ id, revision })) },
       }, { deliverAs: "steer", triggerTurn: true });
     });
-    const config = readJson<{ maxOpenWorkers?: number }>(join(getAgentDir(), "rex-subagents.json"));
-    const maxOpen = config?.maxOpenWorkers ?? MAX_OPEN_WORKERS;
-    if (!Number.isSafeInteger(maxOpen) || maxOpen < 1) throw new Error("maxOpenWorkers must be a positive integer");
     const location = process.env.REX_SESSION && process.env.REX_BLOCK ? {
       server: process.env.REX_SERVER,
       session: process.env.REX_SESSION,
@@ -102,7 +98,7 @@ export default function rexSubagents(pi: ExtensionAPI): void {
         const working = workers.filter((item) => item.connection !== "closed" && (!item.state || active(item.state.status))).length;
         const open = workers.filter((item) => item.connection !== "closed").length;
         ctx.ui.setStatus(ENTRY, open ? `${working} working / ${open} workers` : undefined);
-      }, maxOpen);
+      });
     controller.attach(restored.workers);
   };
 
@@ -186,7 +182,7 @@ export default function rexSubagents(pi: ExtensionAPI): void {
         if (result) consume(worker.reference.id, result.revision);
         return response(result ? resultText(result, 50 * 1024) : describe(worker), { worker: worker.reference, result });
       }
-      return response(`${describe(worker)}\nOpen it through Rex or /agents. Completion will be delivered automatically.`, {
+      return response(`${describe(worker)}\nOpen its pane in Rex. Completion will be delivered automatically.`, {
         worker: worker.reference, pane: worker.pane,
       });
     },
@@ -222,40 +218,6 @@ export default function rexSubagents(pi: ExtensionAPI): void {
       const worker = current().find(params.agent_id);
       await current().steer(worker, params.message);
       return response(`Directions accepted by ${worker.manifest.name}.`, { worker: worker.reference });
-    },
-  });
-
-  pi.registerCommand("agents", {
-    description: "Open, minimize, stop, or close Rex worker panes",
-    async handler(args, ctx) {
-      try {
-        const manager = current();
-        const [verb, ...rest] = args.trim().split(/\s+/);
-        let worker: Worker;
-        let action: string | undefined;
-        if (["open", "minimize", "stop", "close"].includes(verb) && rest.length) {
-          worker = manager.find(rest.join(" "));
-          action = verb;
-        } else {
-          const workers = [...manager.workers.values()];
-          if (!workers.length) { ctx.ui.notify("No workers in this conversation.", "info"); return; }
-          const labels = workers.map((item) => `${item.manifest.name} · ${
-            item.connection === "connected" ? item.state?.status : item.connection
-          } · ${item.reference.id.slice(0, 8)}`);
-          const selected = await ctx.ui.select("Workers", labels);
-          if (!selected) return;
-          worker = workers[labels.indexOf(selected)];
-          action = (await ctx.ui.select(worker.manifest.description, ["Open", "Minimize", "Stop", "Close"]))?.toLowerCase();
-        }
-        if (action === "open") await manager.present(worker, false);
-        if (action === "minimize") await manager.present(worker, true);
-        if (action === "stop") await manager.stop(worker);
-        if (action === "close" && await ctx.ui.confirm("Close worker?", `End ${worker.manifest.name}'s process? Its transcript will be kept.`)) {
-          await manager.close(worker);
-        }
-      } catch (error) {
-        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-      }
     },
   });
 }

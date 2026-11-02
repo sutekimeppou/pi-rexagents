@@ -8,7 +8,6 @@ import { dirname, join } from "node:path";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 export const ENTRY = "rex-subagents";
-export const MAX_OPEN_WORKERS = 10;
 export const PREVIEW_LENGTH = 12_000;
 
 export interface AgentDefinition {
