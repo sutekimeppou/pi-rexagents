@@ -7,10 +7,10 @@ Workers keep running when the parent turn is cancelled or its session closes. Re
 ## Install
 
 ```sh
-pi install git:git@github.com:sutekimeppou/pi-rexagents.git
+pi install git:github.com/sutekimeppou/pi-rexagents
 ```
 
-Requires GitHub SSH access, Pi 1.4.0+, and a local Rex session with the `rex` CLI on your path. Run `/reload` after installing. Remove any existing local copy before loading this package.
+Requires Pi 1.4.0+ and a local Rex session with the `rex` CLI on your path. Run `/reload` after installing. Remove any existing local copy before loading this package.
 
 ## Agent setup
 
