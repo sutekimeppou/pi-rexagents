@@ -2,6 +2,7 @@
   "name": "pi-rexagents",
   "version": "0.1.0",
   "description": "Interactive Pi subagents in minimized Rex panes.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "keywords": ["pi-package"],
