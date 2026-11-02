@@ -58,6 +58,5 @@ Inside a worker, use Enter to steer, Alt+Enter to queue follow-up work, and Esca
 
 ```sh
 npm install
-npm test
 npm run typecheck
 ```
