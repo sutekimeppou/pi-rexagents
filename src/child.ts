@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
@@ -84,6 +84,8 @@ export default function childBridge(pi: ExtensionAPI): void {
       release = acquireLock(join(manifest.directory, "owner.json"));
       const previous = readJson<WorkerState>(join(manifest.directory, "state.json"));
       const sameInstance = previous?.instance === manifest.instance;
+      const initialPrompt = !sameInstance && manifest.initialPrompt
+        ? readFileSync(manifest.initialPrompt, "utf8") : undefined;
       state = sameInstance ? { ...previous } : {
         version: 1, id: manifest.id, instance: manifest.instance,
         pid: process.pid, run: previous?.run ?? 0, resultRevision: previous?.resultRevision ?? 0,
@@ -91,7 +93,7 @@ export default function childBridge(pi: ExtensionAPI): void {
       };
       state.pid = process.pid;
       state.block = process.env.REX_BLOCK;
-      if (!sameInstance && manifest.initialPrompt) {
+      if (initialPrompt !== undefined) {
         state.run++;
         state.status = "starting";
       }
@@ -118,6 +120,7 @@ export default function childBridge(pi: ExtensionAPI): void {
       await bridge.listen();
       ready = true;
       publish();
+      if (initialPrompt !== undefined) pi.sendUserMessage(initialPrompt);
     } catch (error) {
       ctx.ui.notify(`Rex worker startup failed: ${error instanceof Error ? error.message : error}`, "error");
       ctx.shutdown();

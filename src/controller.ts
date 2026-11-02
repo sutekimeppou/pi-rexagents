@@ -247,7 +247,6 @@ export class Controller {
       if (manifest.agent.tools.length) args.push("--tools", manifest.agent.tools.join(","));
       else args.push("--no-tools");
     }
-    if (manifest.initialPrompt) args.push("--", `@${manifest.initialPrompt}`);
     return [
       "/usr/bin/env",
       `PI_REX_WORKER=${join(manifest.directory, "launch.json")}`,
