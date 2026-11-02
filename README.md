@@ -1,6 +1,6 @@
 # pi-rexagents
 
-Run [Pi](https://pi.dev) subagents in minimized Rex panes. Each worker has a full Pi chat you can open, steer, and interrupt. Results return to the parent automatically.
+Run [Pi](https://pi.dev) subagents in minimized Rex panes. Each worker has a full Pi chat you can open, steer, and interrupt. Results from parent-initiated work return to the parent automatically.
 
 Workers keep running when the parent turn is cancelled or its session closes. Reopening the parent reconnects to them.
 
@@ -36,9 +36,9 @@ Ask Pi to delegate work:
 The model can call:
 
 - `spawn_subagent` with `prompt`, `description`, and `subagent_type`. Optional `name`, `model`, `thinking`, and `cwd` configure the worker.
-- `get_subagent_result` with `agent_id` and optional `wait: true`.
+- `get_subagent_result` with `agent_id` and optional `wait: true` to retrieve results from parent-initiated work.
 - `steer_subagent` with `agent_id` and `message`. Steering preserves the worker's editor draft.
-- `stop_subagent` with `agent_id` to interrupt the worker's current Pi turn, like pressing Escape. Its Pi process and pane stay interactive, so you can continue chatting naturally. The interrupted run produces no completion notification; results from later turns return normally.
+- `stop_subagent` with `agent_id` to interrupt the worker's current Pi turn, like pressing Escape. Its Pi process and pane stay interactive, so you can continue chatting naturally. The interrupted run produces no completion notification; later parent-initiated runs return results normally.
 
 `context: "fresh"` is the default. `context: "fork"` copies the parent's active conversation branch at spawn time, including tool history and compaction. The worker continues independently. `resume` accepts a worker's name or ID and keeps its existing history and configuration.
 
@@ -52,11 +52,12 @@ Workers start through your default login shell and receive the parent Pi process
 
 Open, minimize, or close worker panes directly in Rex. Closing a pane ends its process and keeps its transcript. Ask Pi to resume a closed worker by name or ID to restore its conversation.
 
-Inside a worker, use Enter to steer, Alt+Enter to queue follow-up work, and Escape to interrupt. Follow-up results also return to the parent.
+Inside a worker, use Enter to steer, Alt+Enter to queue follow-up work, and Escape to interrupt. Messages sent directly to an idle worker stay in that worker's conversation. Steering an ongoing parent-initiated run keeps its result connected to the parent. Assignments and steering from the parent return results to the parent.
 
 ## Development
 
 ```sh
 npm install
+npm test
 npm run typecheck
 ```

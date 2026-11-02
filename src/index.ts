@@ -113,7 +113,7 @@ export default function rexSubagents(pi: ExtensionAPI): void {
             content: `Worker ${worker.manifest.name} (${worker.reference.id}), result ${result.revision}:\n${resultText(result)}`,
           });
         }
-        if (!worker.manifest.stopped && worker.connection === "closed" && worker.state && active(worker.state.status)
+        if (!worker.manifest.stopped && worker.connection === "closed" && worker.state && worker.state.reportToParent !== false && active(worker.state.status)
           && worker.state.run > known) {
           outbox?.add({
             id: worker.reference.id, revision: worker.state.run,
@@ -205,7 +205,7 @@ export default function rexSubagents(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "get_subagent_result",
     label: "Worker result",
-    description: "Retrieve a worker's latest result or wait for its current run. Use the ID or name returned by spawn_subagent. Cancelling a wait leaves the worker running.",
+    description: "Retrieve a worker's latest parent-initiated result or wait for its current parent-initiated run. Direct user conversations stay in the worker. Use the ID or name returned by spawn_subagent. Cancelling a wait leaves the worker running.",
     parameters: ResultParameters,
     async execute(_callId, params: Static<typeof ResultParameters>, signal) {
       const manager = current();

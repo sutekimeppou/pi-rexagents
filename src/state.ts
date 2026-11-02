@@ -66,6 +66,8 @@ export interface WorkerState {
   thinking?: string;
   run: number;
   resultRevision: number;
+  parentResultRevision?: number;
+  reportToParent?: boolean;
   suppressedRevision?: number;
   status: Status;
   runStartLeaf: string | null;
@@ -76,6 +78,7 @@ export interface WorkerState {
 export interface WorkerResult {
   id: string;
   revision: number;
+  reportToParent?: boolean;
   outcome: "completed" | "aborted" | "error";
   text: string;
   error?: string;

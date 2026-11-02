@@ -24,6 +24,7 @@ export function finishRun(
   return {
     id: state.id,
     revision: state.run,
+    reportToParent: state.reportToParent !== false,
     outcome: aborted || assistant?.stopReason === "aborted" ? "aborted" : failure || !assistant ? "error" : "completed",
     text: assistant?.content?.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n") ?? "",
     error: aborted ? "Worker run was interrupted"
@@ -58,6 +59,7 @@ export default function childBridge(pi: ExtensionAPI): void {
     if (!active(state.status)) {
       state.run++;
       state.runStartLeaf = context.sessionManager.getLeafId();
+      state.reportToParent = false;
     }
     state.status = "running";
     state.error = undefined;
@@ -69,6 +71,7 @@ export default function childBridge(pi: ExtensionAPI): void {
     const result = finishRun(state, context.sessionManager.getBranch(), aborted, context.sessionManager.getLeafId());
     writeJson(resultPath(manifest.directory, result.revision), result);
     state.resultRevision = result.revision;
+    if (result.reportToParent) state.parentResultRevision = result.revision;
     state.status = result.outcome;
     state.error = result.error;
     publish();
@@ -89,14 +92,18 @@ export default function childBridge(pi: ExtensionAPI): void {
       state = sameInstance ? { ...previous } : {
         version: 1, id: manifest.id, instance: manifest.instance,
         pid: process.pid, run: previous?.run ?? 0, resultRevision: previous?.resultRevision ?? 0,
+        parentResultRevision: previous?.parentResultRevision ?? previous?.resultRevision ?? 0,
+        reportToParent: false,
         suppressedRevision: previous?.suppressedRevision,
         status: "idle", runStartLeaf: ctx.sessionManager.getLeafId(), updatedAt: new Date().toISOString(),
       };
       state.pid = process.pid;
       state.block = process.env.REX_BLOCK;
+      state.parentResultRevision ??= state.resultRevision;
       if (initialPrompt !== undefined) {
         state.run++;
         state.status = "starting";
+        state.reportToParent = true;
       }
       // Exclusive process ownership is established before removing a stale socket.
       rmSync(manifest.socketPath, { force: true });
@@ -108,12 +115,14 @@ export default function childBridge(pi: ExtensionAPI): void {
           ctx.abort();
         } else if (input.method === "steer") {
           // Reserve the next revision synchronously so a following wait sees it.
-          if (ctx.isIdle() && !active(state.status)) {
+          // Pi can already be busy before our start hook runs.
+          if (!active(state.status)) {
             state.run++;
             state.runStartLeaf = ctx.sessionManager.getLeafId();
             state.status = "starting";
-            publish();
           }
+          state.reportToParent = true;
+          publish();
           pi.sendUserMessage(input.message!, { deliverAs: "steer" });
         }
         return { accepted: true, run: state.run };

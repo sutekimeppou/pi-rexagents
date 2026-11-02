@@ -338,8 +338,9 @@ export class Controller {
     });
   }
 
-  result(worker: Worker, revision = worker.state?.resultRevision): WorkerResult | undefined {
-    return revision ? readJson<WorkerResult>(resultPath(worker.reference.directory, revision)) : undefined;
+  result(worker: Worker, revision = worker.state?.parentResultRevision ?? worker.state?.resultRevision): WorkerResult | undefined {
+    const result = revision ? readJson<WorkerResult>(resultPath(worker.reference.directory, revision)) : undefined;
+    return result?.reportToParent === false ? undefined : result;
   }
 
   async wait(worker: Worker, signal?: AbortSignal): Promise<WorkerResult | undefined> {
@@ -349,7 +350,7 @@ export class Controller {
       this.assertLive(signal);
       await delay(100, undefined, { signal });
     }
-    const revision = worker.state?.run;
+    const revision = worker.state?.reportToParent === false ? worker.state.parentResultRevision : worker.state?.run;
     while (revision && (worker.state?.resultRevision ?? 0) < revision) {
       this.assertLive(signal);
       if (worker.connection === "closed") throw new Error(worker.error || "Worker closed before returning a result");
