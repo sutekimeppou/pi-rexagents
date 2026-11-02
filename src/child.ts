@@ -89,6 +89,7 @@ export default function childBridge(pi: ExtensionAPI): void {
       state = sameInstance ? { ...previous } : {
         version: 1, id: manifest.id, instance: manifest.instance,
         pid: process.pid, run: previous?.run ?? 0, resultRevision: previous?.resultRevision ?? 0,
+        suppressedRevision: previous?.suppressedRevision,
         status: "idle", runStartLeaf: ctx.sessionManager.getLeafId(), updatedAt: new Date().toISOString(),
       };
       state.pid = process.pid;
@@ -100,7 +101,12 @@ export default function childBridge(pi: ExtensionAPI): void {
       // Exclusive process ownership is established before removing a stale socket.
       rmSync(manifest.socketPath, { force: true });
       bridge = new BridgeServer(manifest.socketPath, () => state, (input) => {
-        if (input.method === "steer") {
+        if (input.method === "stop") {
+          // Suppress only this run. The user can continue chatting in the same pane.
+          state.suppressedRevision = state.run;
+          publish();
+          ctx.abort();
+        } else if (input.method === "steer") {
           // Reserve the next revision synchronously so a following wait sees it.
           if (ctx.isIdle() && !active(state.status)) {
             state.run++;

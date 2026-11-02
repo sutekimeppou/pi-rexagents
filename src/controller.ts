@@ -324,38 +324,17 @@ export class Controller {
 
   async stop(worker: Worker): Promise<void> {
     return this.serial(async () => {
-      const previouslyStopped = worker.manifest.stopped;
-      worker.manifest.stopped = true;
-      writeJson(join(worker.reference.directory, "launch.json"), worker.manifest);
-      this.changed(worker);
-      try {
-        const rex = new Rex(worker.manifest.rex);
-        worker.pane ??= await rex.recover(worker.manifest);
-        if (!worker.pane) {
-          const owner = readJson<{ pid: number }>(join(worker.reference.directory, "owner.json"));
-          if (owner && isAlive(owner.pid)) throw new Error("The worker is still running, but its Rex pane could not be found");
-        }
-        if (worker.pane && await rex.running(worker.pane.block)) await rex.stop(worker.pane.block);
-      } catch (error) {
-        worker.manifest.stopped = previouslyStopped;
-        writeJson(join(worker.reference.directory, "launch.json"), worker.manifest);
-        this.changed(worker);
-        throw error;
+      if (worker.connection === "connecting" || worker.connection === "disconnected") await this.reconcile(worker);
+      // Allow an already launched Pi to finish starting its bridge.
+      const deadline = Date.now() + 5_000;
+      while (worker.connection !== "connected" || !worker.client) {
+        this.assertLive();
+        if (worker.connection === "closed") throw new Error("Worker's Pi process has exited. Use spawn_subagent with resume to reopen its conversation.");
+        if (Date.now() >= deadline) throw new Error("Worker is not connected. Open its Pi pane and press Escape to interrupt it.");
+        await delay(100);
       }
-      if (worker.retry) clearTimeout(worker.retry);
-      worker.retry = undefined;
-      worker.client?.close();
-      worker.client = undefined;
-      const state = readJson<WorkerState>(join(worker.reference.directory, "state.json"));
-      if (state?.instance === worker.manifest.instance) worker.state = state;
-      if (worker.state) {
-        worker.state.status = "closed";
-        worker.state.updatedAt = new Date().toISOString();
-        writeJson(join(worker.reference.directory, "state.json"), worker.state);
-      }
-      worker.connection = "closed";
-      worker.error = undefined;
-      this.changed(worker);
+      this.assertLive();
+      await worker.client.call("stop");
     });
   }
 

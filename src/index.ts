@@ -77,6 +77,7 @@ export default function rexSubagents(pi: ExtensionAPI): void {
       (worker) => {
         if (generation !== currentGeneration) return;
         if (worker.error && !controller?.workers.has(worker.reference.id)) ctx.ui.notify(worker.error, "warning");
+        if (worker.state?.suppressedRevision) consume(worker.reference.id, worker.state.suppressedRevision);
         if (worker.manifest.stopped) {
           outbox?.consume(worker.reference.id, Infinity);
           sent.delete(worker.reference.id);
@@ -219,13 +220,13 @@ export default function rexSubagents(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "stop_subagent",
     label: "Stop worker",
-    description: "Hard-stop a worker and its child processes. Keeps its Rex pane available for reading terminal output. Returns only a stop acknowledgement; suppresses completion notifications. Use the worker's ID or name.",
+    description: "Interrupt a worker's current Pi turn, like pressing Escape. Keeps its Pi process and Rex pane interactive so the user can continue chatting naturally. Suppresses the interrupted run's completion notification. Use the worker's ID or name.",
     parameters: Type.Object({ agent_id: Type.String() }),
     async execute(_callId, params) {
       const manager = current();
       const worker = manager.find(params.agent_id);
       await manager.stop(worker);
-      return response(`Stopped ${worker.manifest.name}.`, { worker: worker.reference, pane: worker.pane });
+      return response(`Stop requested for ${worker.manifest.name}. Its Pi pane stays interactive.`, { worker: worker.reference, pane: worker.pane });
     },
   });
 

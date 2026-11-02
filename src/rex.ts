@@ -1,6 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { delimiter } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import type { Manifest, Pane } from "./state.ts";
 
@@ -120,40 +119,6 @@ export class Rex {
       if (/not_found|session_not_found/.test(String(error))) return false;
       throw error;
     }
-  }
-
-  async stop(block: string): Promise<void> {
-    const terminal = await this.call<{ child?: { pid: number } | null; last_exit: unknown }>(
-      "com.superlogical.terminal.process", { block_id: block, args: {} },
-    );
-    if (terminal.last_exit !== null) return;
-    const root = terminal.child?.pid;
-    if (!root || !Number.isSafeInteger(root) || root <= 1 || root === process.pid) {
-      throw new Error("Could not identify the worker's terminal process");
-    }
-
-    // Include detached tool processes, which can have their own process groups.
-    const { stdout } = await exec("ps", ["-A", "-o", "pid=,ppid="]);
-    const processes = stdout.trim().split("\n").map((line) => line.trim().split(/\s+/).map(Number));
-    const pids = new Set([root]);
-    for (const parent of pids) {
-      for (const [pid, ppid] of processes) {
-        if (ppid === parent) pids.add(pid);
-      }
-    }
-    if (pids.has(process.pid)) throw new Error("The worker's process tree includes the parent Pi process");
-    for (const pid of pids) {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-      }
-    }
-    for (let attempt = 0; attempt < 50; attempt++) {
-      if (!await this.running(block)) return;
-      await delay(100);
-    }
-    throw new Error("Worker termination has not been confirmed. Inspect its pane in Rex.");
   }
 
   watch(onChange: () => void): () => void {

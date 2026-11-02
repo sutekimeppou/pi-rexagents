@@ -38,7 +38,7 @@ The model can call:
 - `spawn_subagent` with `prompt`, `description`, and `subagent_type`. Optional `name`, `model`, `thinking`, and `cwd` configure the worker.
 - `get_subagent_result` with `agent_id` and optional `wait: true`.
 - `steer_subagent` with `agent_id` and `message`. Steering preserves the worker's editor draft.
-- `stop_subagent` with `agent_id` to hard-stop a worker and its child processes. Its Rex pane stays available for reading output. Stopped workers produce no completion notification or summary.
+- `stop_subagent` with `agent_id` to interrupt the worker's current Pi turn, like pressing Escape. Its Pi process and pane stay interactive, so you can continue chatting naturally. The interrupted run produces no completion notification; results from later turns return normally.
 
 `context: "fresh"` is the default. `context: "fork"` copies the parent's active conversation branch at spawn time, including tool history and compaction. The worker continues independently. `resume` accepts a worker's name or ID and keeps its existing history and configuration.
 

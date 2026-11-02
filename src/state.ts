@@ -66,6 +66,7 @@ export interface WorkerState {
   thinking?: string;
   run: number;
   resultRevision: number;
+  suppressedRevision?: number;
   status: Status;
   runStartLeaf: string | null;
   updatedAt: string;
