@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentDefinition } from "./state.ts";
 
+type AgentFrontmatter = Partial<Omit<AgentDefinition, "prompt" | "tools">> & { tools?: string | string[] };
+
 export function discoverAgents(): Map<string, { path: string; description: string }> {
   const directory = join(getAgentDir(), "agents");
   let files;
@@ -24,29 +26,16 @@ export function discoverAgents(): Map<string, { path: string; description: strin
 }
 
 export function parseAgent(text: string, fallbackName: string): AgentDefinition {
-  const { frontmatter: data, body } = parseFrontmatter<Record<string, unknown>>(text);
-  if (data.prompt_mode !== undefined && data.prompt_mode !== "append") {
-    throw new Error("Rex workers support prompt_mode: append");
-  }
-  for (const key of ["extensions", "skills"]) {
-    if (data[key] !== undefined && typeof data[key] !== "boolean") throw new Error(`${key} must be a boolean`);
-  }
-  for (const key of ["name", "description", "model", "thinking"]) {
-    if (data[key] !== undefined && typeof data[key] !== "string") throw new Error(`${key} must be a string`);
-  }
-  let tools: string[] | undefined;
-  if (data.tools !== undefined) {
-    if (typeof data.tools === "string") tools = data.tools === "none" ? [] : data.tools.split(",").map((s) => s.trim()).filter(Boolean);
-    else if (Array.isArray(data.tools) && data.tools.every((tool) => typeof tool === "string")) tools = data.tools;
-    else throw new Error("tools must be a comma-separated string or string array");
-    if (tools.some((tool) => tool.startsWith("ext:"))) throw new Error("ext: tool selectors are unsupported; use Pi tool names");
-  }
+  const { frontmatter: data, body } = parseFrontmatter<AgentFrontmatter>(text);
+  const tools = typeof data.tools === "string"
+    ? data.tools === "none" ? [] : data.tools.split(",").map((tool) => tool.trim()).filter(Boolean)
+    : data.tools;
   return {
-    name: data.name as string || fallbackName,
-    description: data.description as string || fallbackName,
+    name: data.name || fallbackName,
+    description: data.description || fallbackName,
     prompt: body,
-    model: data.model as string | undefined,
-    thinking: data.thinking as string | undefined,
+    model: data.model,
+    thinking: data.thinking,
     tools,
     extensions: data.extensions !== false,
     skills: data.skills !== false,
