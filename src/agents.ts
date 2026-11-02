@@ -3,11 +3,6 @@ import { join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentDefinition } from "./state.ts";
 
-const SUPPORTED = new Set([
-  "name", "description", "model", "thinking", "tools", "prompt_mode",
-  "extensions", "skills", "allowed_subagents",
-]);
-
 export function discoverAgents(): Map<string, { path: string; description: string }> {
   const directory = join(getAgentDir(), "agents");
   let files;
@@ -30,14 +25,8 @@ export function discoverAgents(): Map<string, { path: string; description: strin
 
 export function parseAgent(text: string, fallbackName: string): AgentDefinition {
   const { frontmatter: data, body } = parseFrontmatter<Record<string, unknown>>(text);
-  for (const key of Object.keys(data)) {
-    if (!SUPPORTED.has(key)) throw new Error(`Unsupported agent setting "${key}" in ${fallbackName}`);
-  }
   if (data.prompt_mode !== undefined && data.prompt_mode !== "append") {
     throw new Error("Rex workers support prompt_mode: append");
-  }
-  if (data.allowed_subagents !== undefined && data.allowed_subagents !== "none") {
-    throw new Error("Nested delegation is disabled. Use allowed_subagents: none");
   }
   for (const key of ["extensions", "skills"]) {
     if (data[key] !== undefined && typeof data[key] !== "boolean") throw new Error(`${key} must be a boolean`);
