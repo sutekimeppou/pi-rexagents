@@ -205,15 +205,13 @@ export class Controller {
         context: options.fork ? "fork" : "fresh",
         initialPrompt: join(directory, "assignment.md"),
       };
-      if (options.fork) {
-        // Seed a separate native transcript from the captured active branch.
-        // Pi handles compaction, context edits, and unfinished historical tool calls.
-        const session = SessionManager.create(cwd, join(directory, "sessions"), {
-          id: manifest.sessionId, parentSession: options.fork.parentSession,
-        });
-        writePrivate(session.getSessionFile()!, [session.getHeader(), ...options.fork.entries]
-          .map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-      }
+      // Persist the session before launch so Pi can resolve --session-id.
+      // Forked workers also receive the captured active branch.
+      const session = SessionManager.create(cwd, join(directory, "sessions"), {
+        id: manifest.sessionId, parentSession: options.fork?.parentSession,
+      });
+      writePrivate(session.getSessionFile()!, [session.getHeader(), ...(options.fork?.entries ?? [])]
+        .map((entry) => JSON.stringify(entry)).join("\n") + "\n");
       writePrivate(manifest.initialPrompt!, options.prompt);
       writePrivate(join(directory, "agent-prompt.md"), manifest.agent.prompt);
       writeJson(join(directory, "launch.json"), manifest);
