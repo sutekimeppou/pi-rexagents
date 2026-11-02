@@ -77,7 +77,14 @@ export default function rexSubagents(pi: ExtensionAPI): void {
       (worker) => {
         if (generation !== currentGeneration) return;
         if (worker.error && !controller?.workers.has(worker.reference.id)) ctx.ui.notify(worker.error, "warning");
-        const result = controller?.result(worker);
+        if (worker.manifest.stopped) {
+          outbox?.consume(worker.reference.id, Infinity);
+          sent.delete(worker.reference.id);
+          if (worker.connection === "closed") {
+            consume(worker.reference.id, Math.max(worker.state?.run ?? 0, worker.state?.resultRevision ?? 0));
+          }
+        }
+        const result = worker.manifest.stopped ? undefined : controller?.result(worker);
         const known = Math.max(consumed.get(worker.reference.id) ?? 0, sent.get(worker.reference.id)?.revision ?? 0);
         if (result && result.revision > known) {
           outbox?.add({
@@ -85,7 +92,7 @@ export default function rexSubagents(pi: ExtensionAPI): void {
             content: `Worker ${worker.manifest.name} (${worker.reference.id}), result ${result.revision}:\n${resultText(result)}`,
           });
         }
-        if (worker.connection === "closed" && worker.state && active(worker.state.status)
+        if (!worker.manifest.stopped && worker.connection === "closed" && worker.state && active(worker.state.status)
           && worker.state.run > known) {
           outbox?.add({
             id: worker.reference.id, revision: worker.state.run,
@@ -206,6 +213,19 @@ export default function rexSubagents(pi: ExtensionAPI): void {
       }` : ""}`, {
         worker: worker.reference, state: worker.state, connection: worker.connection, result,
       });
+    },
+  });
+
+  pi.registerTool({
+    name: "stop_subagent",
+    label: "Stop worker",
+    description: "Hard-stop a worker and its child processes. Keeps its Rex pane available for reading terminal output. Returns only a stop acknowledgement; suppresses completion notifications. Use the worker's ID or name.",
+    parameters: Type.Object({ agent_id: Type.String() }),
+    async execute(_callId, params) {
+      const manager = current();
+      const worker = manager.find(params.agent_id);
+      await manager.stop(worker);
+      return response(`Stopped ${worker.manifest.name}.`, { worker: worker.reference, pane: worker.pane });
     },
   });
 

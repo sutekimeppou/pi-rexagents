@@ -44,6 +44,7 @@ export interface Manifest {
   thinking: string;
   context?: "fresh" | "fork";
   initialPrompt?: string;
+  stopped?: boolean;
 }
 
 export interface Pane {

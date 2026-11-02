@@ -113,7 +113,7 @@ export class Controller {
   }
 
   private connect(worker: Worker): void {
-    if (this.disposed) return;
+    if (this.disposed || (worker.manifest.stopped && worker.connection === "closed")) return;
     worker.client?.close();
     worker.connection = "connecting";
     const client = new BridgeClient(worker.manifest.socketPath, (state) => this.receive(worker, state), () => {
@@ -302,6 +302,7 @@ export class Controller {
       }
       worker.manifest = {
         ...worker.manifest, instance: randomUUID(),
+        stopped: undefined,
         model: worker.state?.model ?? worker.manifest.model,
         thinking: worker.state?.thinking ?? worker.manifest.thinking,
         initialPrompt: prompt ? join(worker.reference.directory, "assignment.md") : undefined,
@@ -319,6 +320,43 @@ export class Controller {
   async steer(worker: Worker, message: string): Promise<void> {
     if (worker.connection !== "connected" || !worker.client) throw new Error("Worker is not connected. Inspect its pane in Rex or use spawn_subagent with resume.");
     await worker.client.call("steer", message);
+  }
+
+  async stop(worker: Worker): Promise<void> {
+    return this.serial(async () => {
+      const previouslyStopped = worker.manifest.stopped;
+      worker.manifest.stopped = true;
+      writeJson(join(worker.reference.directory, "launch.json"), worker.manifest);
+      this.changed(worker);
+      try {
+        const rex = new Rex(worker.manifest.rex);
+        worker.pane ??= await rex.recover(worker.manifest);
+        if (!worker.pane) {
+          const owner = readJson<{ pid: number }>(join(worker.reference.directory, "owner.json"));
+          if (owner && isAlive(owner.pid)) throw new Error("The worker is still running, but its Rex pane could not be found");
+        }
+        if (worker.pane && await rex.running(worker.pane.block)) await rex.stop(worker.pane.block);
+      } catch (error) {
+        worker.manifest.stopped = previouslyStopped;
+        writeJson(join(worker.reference.directory, "launch.json"), worker.manifest);
+        this.changed(worker);
+        throw error;
+      }
+      if (worker.retry) clearTimeout(worker.retry);
+      worker.retry = undefined;
+      worker.client?.close();
+      worker.client = undefined;
+      const state = readJson<WorkerState>(join(worker.reference.directory, "state.json"));
+      if (state?.instance === worker.manifest.instance) worker.state = state;
+      if (worker.state) {
+        worker.state.status = "closed";
+        worker.state.updatedAt = new Date().toISOString();
+        writeJson(join(worker.reference.directory, "state.json"), worker.state);
+      }
+      worker.connection = "closed";
+      worker.error = undefined;
+      this.changed(worker);
+    });
   }
 
   result(worker: Worker, revision = worker.state?.resultRevision): WorkerResult | undefined {
