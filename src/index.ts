@@ -9,6 +9,7 @@ import {
   ENTRY, PREVIEW_LENGTH, active, reconstruct, resultPath,
   type ParentEntry, type WorkerResult,
 } from "./state.ts";
+import { formatWorkerStatus } from "./utils/format-worker-status.ts";
 
 const SpawnParameters = obj({
   prompt: str({ minLength: 1, description: "Self-contained assignment, including scope and required checks" }),
@@ -123,10 +124,10 @@ export default function rexSubagents(pi: ExtensionAPI): void {
           });
         }
         const workers = [...(controller?.workers.values() ?? [])];
-        const working = workers.filter((item) => item.connection !== "closed" && (!item.state || active(item.state.status))).length;
         const open = workers.filter((item) => item.connection !== "closed").length;
-        ctx.ui.setStatus(ENTRY, open ? `${working} working / ${open} workers` : undefined);
+        ctx.ui.setStatus(ENTRY, open ? formatWorkerStatus(open) : undefined);
       });
+    ctx.ui.setStatus(ENTRY, undefined);
     controller.attach(restored.workers);
   };
 
