@@ -17,6 +17,7 @@ interface Layer {
   layer_id: string;
   kind: string;
   state?: string;
+  bounds: number[];
   blocks: Block[];
 }
 
@@ -49,7 +50,7 @@ export class Rex {
     this.checked ??= (async () => {
       const { stdout } = await exec("rex", [...this.options(), "api", "list", "--json"], { maxBuffer: 8 * 1024 * 1024 });
       const methods = new Set((JSON.parse(stdout) as { methods: { name: string }[] }).methods.map((m) => m.name));
-      for (const method of ["session.new_layer", "session.set_layer_state", "session.float_block", "session.view"]) {
+      for (const method of ["session.new_layer", "session.set_layer_state", "session.float_block", "session.move_block", "session.view"]) {
         if (!methods.has(method)) throw new Error(`The connected Rex server needs ${method}`);
       }
       const [parent, identity] = await Promise.all([
@@ -89,10 +90,48 @@ export class Rex {
   }
 
   async recover(manifest: Manifest): Promise<Pane | undefined> {
-    const { blocks } = await this.call<{ blocks: Block[] }>("session.list_blocks");
-    const matches = blocks.filter((block) => block.label === this.label(manifest));
-    if (matches.length > 1) throw new Error(`Multiple Rex panes match worker ${manifest.id}; inspect them in Rex before retrying`);
-    return matches[0] ? { instance: manifest.instance, block: matches[0].block_id } : undefined;
+    try {
+      const { blocks } = await this.call<{ blocks: Block[] | null }>("session.list_blocks");
+      const matches = (blocks ?? []).filter((block) => block.label === this.label(manifest));
+      if (matches.length > 1) throw new Error(`Multiple Rex panes match worker ${manifest.id}; inspect them in Rex before retrying`);
+      return matches[0] ? { instance: manifest.instance, block: matches[0].block_id } : undefined;
+    } catch (error) {
+      if (!/session_not_found/.test(String(error))) throw error;
+      return undefined;
+    }
+  }
+
+  async relocate(pane: Pane): Promise<void> {
+    const [parent, view] = await Promise.all([
+      this.call<{ block: Block }>("session.describe_block", { block_id: this.location.parentBlock }),
+      this.call<View>("session.view"),
+    ]);
+    const source = view.windows.find((window) =>
+      window.layers.some((layer) => layer.blocks?.some((block) => block.block_id === pane.block)));
+    if (source?.window_id === parent.block.window_id) return;
+    const layer = source?.layers.find((item) => item.blocks?.some((block) => block.block_id === pane.block));
+    await this.call("session.move_block", {
+      block_id: pane.block, anchor_block_id: this.location.parentBlock,
+    });
+    if (layer?.kind === "floating") {
+      const floated = await this.call<{ layer_id: string }>("session.float_block", {
+        block_id: pane.block, bounds: layer.bounds,
+      });
+      pane.layer = floated.layer_id;
+      await this.call("session.set_layer_state", {
+        layer_id: pane.layer, state: layer.state ?? "normal",
+      });
+    } else {
+      pane.layer = undefined;
+    }
+  }
+
+  async close(pane: Pane): Promise<void> {
+    try {
+      await this.call("block.close", { block_id: pane.block });
+    } catch (error) {
+      if (!/not_found|session_not_found/.test(String(error))) throw error;
+    }
   }
 
   async present(pane: Pane, minimized: boolean): Promise<void> {

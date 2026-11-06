@@ -10,6 +10,7 @@ import {
   type ParentEntry, type WorkerResult,
 } from "./state.ts";
 import { formatWorkerStatus } from "./utils/format-worker-status.ts";
+import { ParentOwnership } from "./utils/parent-ownership.ts";
 
 const SpawnParameters = obj({
   prompt: str({ minLength: 1, description: "Self-contained assignment, including scope and required checks" }),
@@ -52,12 +53,14 @@ export default function rexSubagents(pi: ExtensionAPI): void {
   if (process.env.PI_REX_WORKER) return;
 
   let controller: Controller | undefined;
+  let ownership: ParentOwnership | undefined;
   let consumed = new Map<string, number>();
   let outbox: CompletionOutbox | undefined;
   const sent = new Map<string, Completion>();
   let generation = 0;
 
   const consume = (id: string, revision: number) => {
+    if (!ownership?.isCurrent()) return;
     if (revision <= (consumed.get(id) ?? 0)) return;
     consumed.set(id, revision);
     if ((sent.get(id)?.revision ?? Infinity) <= revision) sent.delete(id);
@@ -68,18 +71,30 @@ export default function rexSubagents(pi: ExtensionAPI): void {
   const stop = () => {
     generation++;
     outbox?.dispose();
+    outbox = undefined;
     controller?.dispose();
     controller = undefined;
+    ownership?.dispose();
+    ownership = undefined;
     sent.clear();
   };
 
-  const start = (ctx: ExtensionContext) => {
+  const start = async (ctx: ExtensionContext) => {
     stop();
     const currentGeneration = generation;
+    ownership = new ParentOwnership({
+      parentId: ctx.sessionManager.getSessionId(),
+      onLost: () => {
+        stop();
+        ctx.ui.setStatus(ENTRY, undefined);
+        ctx.ui.notify("The most recently opened copy of this Pi session now owns its workers.", "info");
+      },
+    });
+    const isOwner = () => generation === currentGeneration && ownership?.isCurrent() === true;
     const restored = reconstruct(ctx.sessionManager.getBranch());
     consumed = restored.consumed;
     outbox = new CompletionOutbox(() => !ctx.isIdle(), (items) => {
-      if (generation !== currentGeneration) return;
+      if (!isOwner()) return;
       for (const item of items) sent.set(item.id, item);
       pi.sendMessage({
         customType: "rex-subagent-result",
@@ -93,11 +108,12 @@ export default function rexSubagents(pi: ExtensionAPI): void {
       session: process.env.REX_SESSION,
       parentBlock: process.env.REX_BLOCK,
     } : undefined;
-    controller = new Controller(ctx.sessionManager.getSessionId(), location,
-      (worker) => pi.appendEntry<ParentEntry>(ENTRY, { action: "worker", worker }),
-      (worker) => {
-        if (generation !== currentGeneration) return;
-        if (worker.error && !controller?.workers.has(worker.reference.id)) ctx.ui.notify(worker.error, "warning");
+    controller = new Controller({
+      parentId: ctx.sessionManager.getSessionId(), location, isOwner,
+      onWorker: (worker) => pi.appendEntry<ParentEntry>(ENTRY, { action: "worker", worker }),
+      onChange: (worker) => {
+        if (!isOwner()) return;
+        if (worker.error) ctx.ui.notify(worker.error, "warning");
         if (worker.state?.suppressedRevision) consume(worker.reference.id, worker.state.suppressedRevision);
         if (worker.manifest.stopped) {
           outbox?.consume(worker.reference.id, Infinity);
@@ -126,13 +142,20 @@ export default function rexSubagents(pi: ExtensionAPI): void {
         const workers = [...(controller?.workers.values() ?? [])];
         const open = workers.filter((item) => item.connection !== "closed").length;
         ctx.ui.setStatus(ENTRY, open ? formatWorkerStatus(open) : undefined);
-      });
+      },
+    });
     ctx.ui.setStatus(ENTRY, undefined);
-    controller.attach(restored.workers);
+    try {
+      await controller.attach(restored.workers);
+    } catch (error) {
+      if (isOwner()) throw error;
+    }
   };
 
   pi.on("session_start", (_event, ctx) => start(ctx));
-  pi.on("session_tree", (_event, ctx) => start(ctx));
+  pi.on("session_tree", (_event, ctx) => {
+    if (ownership?.isCurrent()) return start(ctx);
+  });
   pi.on("session_shutdown", () => stop());
   pi.on("turn_end", (event) => outbox?.boundary(event.outcome !== "completed"));
   pi.on("message_end", (event) => {
@@ -149,6 +172,7 @@ export default function rexSubagents(pi: ExtensionAPI): void {
   });
 
   const current = (): Controller => {
+    if (!ownership?.isCurrent()) throw new Error("Workers belong to the most recently opened copy of this Pi session.");
     if (!controller) throw new Error("Rex subagents are unavailable until a Pi session starts");
     return controller;
   };
