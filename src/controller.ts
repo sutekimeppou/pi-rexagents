@@ -99,10 +99,7 @@ export class Controller {
     try {
       const worker = this.add(reference);
       const location = this.options.location;
-      if (!location || (!worker.manifest.reopen
-        && worker.manifest.rex.session === location.session
-        && worker.manifest.rex.server === location.server
-        && worker.manifest.rex.parentBlock === location.parentBlock)) return worker;
+      if (!location) return worker;
       const target = new Rex(location);
       await target.check();
       this.assertLive();
@@ -111,7 +108,11 @@ export class Controller {
       const sameSession = worker.manifest.rex.session === location.session
         && worker.manifest.rex.server === location.server;
       if (sameSession && !worker.manifest.reopen) {
-        if (worker.pane) await target.relocate(worker.pane);
+        if (worker.pane) {
+          await target.relocate(worker.pane);
+          this.assertLive();
+          await target.present(worker.pane, true);
+        }
         this.assertLive();
         worker.manifest.rex = location;
         writeJson(join(reference.directory, "launch.json"), worker.manifest);
